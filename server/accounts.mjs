@@ -8,6 +8,14 @@ export function initializeAccounts(db){
  if(!columns.includes('display_name'))db.exec("ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''");
  if(!columns.includes('active'))db.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
 }
+export function initializeDeploymentAdmin(db,password=process.env.ADMIN_INITIAL_PASSWORD){
+ if(db.prepare("SELECT username FROM users WHERE role='admin'").get())return {created:false,reason:'already_initialized'};
+ if(password===undefined||password==='')return {created:false,reason:'not_configured'};
+ if(db.prepare("SELECT username FROM users WHERE username='admin'").get())throw Error('账号admin已被占用，无法初始化管理员；请先解决账号冲突');
+ let secret;try{secret=passwordHash(password);}catch{throw Error('ADMIN_INITIAL_PASSWORD需为8至128个字符；未创建管理员');}
+ db.prepare('INSERT INTO users(username,role,salt,hash,expires,display_name,active) VALUES(?,?,?,?,?,?,1)').run('admin','admin',secret.salt,secret.hash,null,'系统管理员');
+ return {created:true};
+}
 const local=req=>['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)&&['127.0.0.1','localhost'].includes(String(req.headers.host).split(':')[0])&&process.env.HOST!=='0.0.0.0';
 export function registerAccountSetup(app,db,issue){
  app.get('/api/auth/setup',(req,res)=>res.json({required:!db.prepare("SELECT username FROM users WHERE role='admin'").get(),local:local(req)}));

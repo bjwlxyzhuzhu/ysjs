@@ -1,4 +1,4 @@
-import {initializeAccounts,registerAccounts,registerAccountSetup,passwordMatches,publicUser} from './accounts.mjs';
+import {initializeAccounts,initializeDeploymentAdmin,registerAccounts,registerAccountSetup,passwordMatches,publicUser} from './accounts.mjs';
 import {registerStudents,courseMetadata} from './student-records.mjs';
 import {registerGradeReview} from './grade-review.mjs';
 import {hasVisualObservation,analysisOutcome} from './analysis-state.mjs';
@@ -33,6 +33,8 @@ if(!db.prepare('SELECT username FROM users LIMIT 1').get()){
  const accounts={};for(const [username,role] of [['teacher','teacher'],['judge01','judge']]){const password=randomBytes(12).toString('base64url'),salt=randomBytes(16).toString('hex');db.prepare('INSERT INTO users(username,role,salt,hash,expires) VALUES(?,?,?,?,?)').run(username,role,salt,scryptSync(password,salt,64).toString('hex'),role==='judge'?(process.env.JUDGE_EXPIRES_AT||new Date(Date.now()+30*86400000).toISOString()):null);accounts[username]=password;}
  await fs.writeFile(path.join(DATA,'initial-accounts.json'),JSON.stringify(accounts,null,2),{mode:0o600});console.log('初始账号已写入 data/initial-accounts.json；正式部署前请妥善保存并移除文件。');
 }
+const deploymentAdmin=initializeDeploymentAdmin(db);delete process.env.ADMIN_INITIAL_PASSWORD;
+if(deploymentAdmin.created)console.log('管理员admin已通过部署环境初始化；密码未写入初始账号文件。登录后可移除部署环境中的ADMIN_INITIAL_PASSWORD。');
 if(process.env.JUDGE_EXPIRES_AT){if(!Number.isFinite(Date.parse(process.env.JUDGE_EXPIRES_AT)))throw Error('JUDGE_EXPIRES_AT 日期无效');db.prepare('UPDATE users SET expires=? WHERE role=?').run(process.env.JUDGE_EXPIRES_AT,'judge');}
 const app=express();app.disable('x-powered-by');app.use(express.json({limit:'2mb'}));
 app.use((req,res,next)=>{res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');if(!['GET','HEAD','OPTIONS'].includes(req.method)&&req.headers.origin){try{if(new URL(req.headers.origin).host!==req.headers.host && !(process.env.NODE_ENV!=='production' && req.headers.origin==='http://127.0.0.1:5173' && ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)))return res.status(403).json({error:'来源不匹配'});}catch{return res.status(403).json({error:'来源无效'});}}next();});
