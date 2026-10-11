@@ -14,8 +14,9 @@ export function validateAnnotation(raw){
 export function redact(text){return String(text).replace(/(?:姓名|学生姓名|学号|学校|学院|班级)\s*[:：]\s*[^\n\r，,；;]+/g,'[身份信息已移除]').replace(/1[3-9]\d{9}/g,'[联系方式已移除]').replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g,'[邮箱已移除]');}
 export function validSources(item,shots,evidence=shots.flatMap(s=>s.knowledge_ids||[])){return Array.isArray(item.shot_ids)&&item.shot_ids.length>0&&item.shot_ids.every(id=>shots.some(s=>s.id===id))&&Array.isArray(item.knowledge_ids)&&item.knowledge_ids.length>0&&item.knowledge_ids.every(id=>knowledge.some(k=>k.id===id)&&evidence.includes(id));}
 export function validateLesson(raw,shots,evidence=shots.flatMap(s=>s.knowledge_ids||[])){
- if(!Array.isArray(raw.slides)||raw.slides.length<3||raw.slides.length>5||!Array.isArray(raw.questions)||raw.questions.length!==5)throw Error('课件页或讨论题数量不符合要求');
- for(const x of [...raw.slides,...raw.questions,raw.board,raw.introduction]){if(!x||typeof x.title!=='string'||typeof x.content!=='string'||x.title.length>300||x.content.length>10000||!validSources(x,shots,evidence))throw Error('生成内容缺少有效镜头或知识点依据');}
+ if(!Array.isArray(raw?.slides)||raw.slides.length<3||raw.slides.length>5||!Array.isArray(raw.questions)||raw.questions.length!==5)throw Error('课件需3至5页、讨论题需5道');
+ const entries=[...raw.slides.map((x,i)=>[`课件第${i+1}页`,x]),...raw.questions.map((x,i)=>[`讨论题第${i+1}题`,x]),['板书',raw.board],['导入语',raw.introduction]];
+ for(const [name,x] of entries){if(!x||typeof x.title!=='string'||!x.title.trim()||typeof x.content!=='string'||!x.content.trim()||x.title.length>300||x.content.length>10000)throw Error(name+'缺少有效标题或正文');if(!validSources(x,shots,evidence))throw Error(name+'缺少有效镜头或知识点引用，请使用本次提供的shot_ids和knowledge_ids');}
  for(const q of raw.questions)if(!['理解','分析','评价','创造'].includes(q.level))throw Error('讨论题层级无效');return raw;
 }
 export function validateGrade(raw,text,weights=rubric){
