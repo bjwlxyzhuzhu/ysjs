@@ -1,0 +1,65 @@
+[
+  {
+    "file": "专题1.pdf",
+    "pages": 20,
+    "sha256": "05794cbd71396018bdb94ded795d6623e3f193cff12ebb9305d0a49b704cd446",
+    "chapter": "影视鉴赏导论与影像素养",
+    "extraction": "PDF 内嵌文本提取，可能存在排版顺序与识别误差；未作逐页人工校订"
+  },
+  {
+    "file": "专题2.pdf",
+    "pages": 20,
+    "sha256": "3ed2a1aa048d904d0e7eb0cc5034dace38e76980df51dfe21fa3c548afa23f51",
+    "chapter": "镜头、画面与视觉造型",
+    "extraction": "PDF 内嵌文本提取，可能存在排版顺序与识别误差；未作逐页人工校订"
+  },
+  {
+    "file": "专题3.pdf",
+    "pages": 20,
+    "sha256": "d7e483ee635da839d5f9c0da517dcbf97d743fc2554f63d652a4f7beac6787b9",
+    "chapter": "剪辑、叙事与时空结构",
+    "extraction": "PDF 内嵌文本提取，可能存在排版顺序与识别误差；未作逐页人工校订"
+  },
+  {
+    "file": "专题4.pdf",
+    "pages": 20,
+    "sha256": "e598ffa23bf7db79421f19f8c02ab5a5032cdb380f8fa9adeeaee761273ccbe6",
+    "chapter": "声音、音乐与 AI 配音鉴赏",
+    "extraction": "PDF 内嵌文本提取，可能存在排版顺序与识别误差；未作逐页人工校订"
+  },
+  {
+    "file": "专题5.pdf",
+    "pages": 20,
+    "sha256": "f688d8369ed6fc75339adf872194b3805f0aef28983b362fe3d4367a8ae0a39f",
+    "chapter": "类型电影、短剧与网络视听",
+    "extraction": "PDF 内嵌文本提取，可能存在排版顺序与识别误差；未作逐页人工校订"
+  },
+  {
+    "file": "专题6.pdf",
+    "pages": 20,
+    "sha256": "7a4eb94765655c39c2ee9fe2827bf75537b2cab3b65d1b9326c8d9ebeb57be64",
+    "chapter": "中国电影、文化表达与课程思政",
+    "extraction": "PDF 内嵌文本提取，可能存在排版顺序与识别误差；未作逐页人工校订"
+  },
+  {
+    "file": "专题7.pdf",
+    "pages": 20,
+    "sha256": "1c63b1d39d8522a67baa9324abf53ab0bcc6370e253abd4fbe75d1cdd5f079ab",
+    "chapter": "地方影像、周秦文化与文旅传播",
+    "extraction": "PDF 内嵌文本提取，可能存在排版顺序与识别误差；未作逐页人工校订"
+  },
+  {
+    "file": "专题8.pdf",
+    "pages": 20,
+    "sha256": "c63659c3b0601e2c000ed82510826663af6a9f1522733a819c195ee2de6397dc",
+    "chapter": "AIGC 影像与 AI 时代媒介伦理",
+    "extraction": "PDF 内嵌文本提取，可能存在排版顺序与识别误差；未作逐页人工校订"
+  },
+  {
+    "file": "专题9.pdf",
+    "pages": 20,
+    "sha256": "cf63dc25240b8cf3774d7502e385432c043dd94960b2a6bf698270091ebe0844",
+    "chapter": "综合影视鉴赏、学生展示与课程评价",
+    "extraction": "PDF 内嵌文本提取，可能存在排版顺序与识别误差；未作逐页人工校订"
+  }
+]

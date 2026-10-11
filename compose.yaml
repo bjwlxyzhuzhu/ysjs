@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:8787:8787"
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      NODE_ENV: production
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
