@@ -1,0 +1,25 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {DatabaseSync} from 'node:sqlite';import {zipSync,strToU8} from 'fflate';import {Document,Packer,Paragraph} from 'docx';
+import {extractTeachingFile,chunksFor,searchCatalogue,createTeachingLibrary} from '../server/teaching-materials.mjs';import {knowledge,validateAnnotation,validateLesson} from '../server/domain.mjs';
+function pdfFixture(){const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];const stream='BT /F1 12 Tf 30 250 Td (Teaching evidence) Tj ET';objects.push('<< /Length '+stream.length+' >>\nstream\n'+stream+'\nendstream');let s='%PDF-1.4\n',offsets=[0];objects.forEach((x,i)=>{offsets.push(Buffer.byteLength(s));s+=`${i+1} 0 obj\n${x}\nendobj\n`;});const xref=Buffer.byteLength(s);s+='xref\n0 6\n0000000000 65535 f \n'+offsets.slice(1).map(x=>String(x).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;return Buffer.from(s);}
+test('教学资料读取DOCX、PDF、PPTX与文本，来源单位真实保留',async()=>{
+ const docx=await Packer.toBuffer(new Document({sections:[{children:[new Paragraph('课程目标：依据课堂提问组织教学。'),new Paragraph('课堂评价：用作品证据论证。')]}]}));
+ const word=await extractTeachingFile(docx,'教案.docx','教案');assert.match(word[0].text,/课程目标/);assert.equal(word[0].unit,'段');
+ const pdf=await extractTeachingFile(pdfFixture(),'论文.pdf','论文');assert.match(pdf[0].text,/Teaching evidence/);assert.equal(pdf[0].page,1);assert.equal(pdf[0].unit,'页');
+ const ppt=Buffer.from(zipSync({'ppt/slides/slide2.xml':strToU8('<p:sld><a:t>课堂讨论 &amp; 评价</a:t></p:sld>'),'ppt/slides/slide1.xml':strToU8('<p:sld><a:t>教学目标</a:t></p:sld>')}));const slides=await extractTeachingFile(ppt,'课件.pptx','课件');assert.equal(slides[0].page,1);assert.equal(slides[1].text,'课堂讨论 & 评价');assert.equal(slides[1].unit,'张幻灯片');
+ assert.deepEqual(await extractTeachingFile(Buffer.from(''),'空.txt','讲义'),[]);await assert.rejects(()=>extractTeachingFile(Buffer.from('legacy'),'教案.doc','教案'),/另存/);
+});
+test('批改CSV及JSON身份脱敏，带逗号姓名也不泄露到检索文本',async()=>{
+ const csv=await extractTeachingFile(Buffer.from('"学号","姓名","评价","分数"\n"002026001","测试,姓名","证据充分","85"'),'批改.csv','批改记录');assert.doesNotMatch(csv[0].text,/002026001|测试|姓名/);assert.match(csv[0].text,/85|证据充分/);
+ const json=await extractTeachingFile(Buffer.from(JSON.stringify({student_id:'002026001',student_name:'测试姓名',dimensions:[{name:'分析',score:85}]})),'批改.json','批改记录');assert.doesNotMatch(json[0].text,/002026001|测试姓名/);assert.match(json[0].text,/85/);
+});
+test('Excel批改记录读取共享字符串并脱敏身份列',async()=>{
+ const xlsx=Buffer.from(zipSync({'xl/sharedStrings.xml':strToU8('<sst><si><t>学号</t></si><si><t>姓名</t></si><si><t>分数</t></si><si><t>测试姓名</t></si></sst>'),'xl/worksheets/sheet1.xml':strToU8('<worksheet><sheetData><row><c t="s"><v>0</v></c><c t="s"><v>1</v></c><c t="s"><v>2</v></c></row><row><c><v>002026001</v></c><c t="s"><v>3</v></c><c><v>85</v></c></row></sheetData></worksheet>')}));
+ const result=await extractTeachingFile(xlsx,'批改.xlsx','批改记录');assert.doesNotMatch(result[0].text,/002026001|测试姓名/);assert.match(result[0].text,/85/);
+});
+test('自建知识引用只在本次课程目录内有效，并保留全文片段来源',()=>{
+ const d={id:'doc-a',title:'课程大纲',type:'教学大纲',filename:'大纲.txt',sections:[{text:'课堂讨论与证据论证。'.repeat(200),page:1,unit:'段'}]};const catalogue=chunksFor(d);assert(catalogue.length>1);assert.equal(catalogue[0].source.material_id,d.id);assert(searchCatalogue('证据论证',catalogue).length>0);assert.equal(searchCatalogue('unrelated-string-999',catalogue).length,0);
+ const item={title:'讨论',content:'依据原文设计课堂问题',shot_ids:['s1'],knowledge_ids:[catalogue[0].id]},raw={slides:Array(3).fill(item),questions:Array(5).fill({...item,level:'分析'}),board:item,introduction:item},shots=[{id:'s1',knowledge_ids:[catalogue[0].id]}];assert.throws(()=>validateLesson(raw,shots),/缺少有效/);assert.equal(validateLesson(raw,shots,[catalogue[0].id],catalogue),raw);
+});
+test('资料库按教师和课程双重隔离，自行上传模式不会混用省级默认资料',()=>{
+ const db=new DatabaseSync(':memory:');try{const library=createTeachingLibrary({db,data:'.',baseKnowledge:knowledge});const document={id:'d',owner:'teacher-a',course_id:'course-a',title:'大纲',type:'教学大纲',filename:'大纲.txt',status:'ready',sections:[{text:'课程独有内容',page:1,unit:'段'}]};db.prepare('INSERT INTO teaching_materials VALUES(?,?,?,?)').run(document.id,document.owner,document.course_id,JSON.stringify(document));assert.equal(library.catalogue('teacher-a','course-a').length,1);assert.equal(library.catalogue('teacher-b','course-a').length,0);assert.equal(library.catalogue('teacher-a','course-b').length,0);assert.equal(library.catalogue('teacher-a','film-appreciation').length,knowledge.length);db.prepare('INSERT INTO library_settings VALUES(?,?,?)').run('teacher-a','film-appreciation','private');assert.equal(library.catalogue('teacher-a','film-appreciation').length,0);}finally{db.close();}
+});
