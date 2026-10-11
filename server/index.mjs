@@ -6,7 +6,7 @@ import 'dotenv/config';
 import { importHomework, anonymizeAssignment } from './homework-import.mjs';
 import { createLessonJobs } from './lesson-jobs.mjs';
 import { candidateSegments, validateSelection, mergeTeachingSelection } from './teaching-selection.mjs';
-import { generateValidatedLesson } from './lesson-content.mjs';
+import { generateValidatedLesson, teacherLessonTemplate } from './lesson-content.mjs';
 import { createModelService } from './model-service.mjs';
 import express from 'express';
 import multer from 'multer';
@@ -196,7 +196,6 @@ app.patch('/api/shots/:id',teacher,(req,res)=>{
 });
 app.post('/api/clips/:id/time',teacher,(req,res)=>{const c=get(req.params.id,req.user.username);const seconds=Number(req.body.seconds);if(!Number.isFinite(seconds)||seconds<=0||seconds>20)return res.status(400).json({error:'计时增量无效'});if(!c.finished)c.active_seconds+=seconds;save('clip',c,req.user.username);res.json({ok:true});});
 app.patch('/api/clips/:id/baseline',teacher,(req,res)=>{const c=get(req.params.id,req.user.username);const n=Number(req.body.minutes);if(!Number.isFinite(n)||n<=0||n>10000)return res.status(400).json({error:'请输入有效人工用时'});c.baseline_minutes=n;save('clip',c,req.user.username);res.json({ok:true});});
-function manualLesson(c){const shots=c.shots;const ids=shots.map(s=>s.id);const kids=[...new Set(shots.flatMap(s=>s.knowledge_ids))];const item=(title,content)=>({title,content,shot_ids:ids,knowledge_ids:kids});return {mode:'teacher_template',slides:[item('观察：画面中有什么',shots.map(s=>`镜头 #${s.index}：${s.shot_size}，${s.composition}，${s.lighting}`).join('\n')),item('分析：形式如何产生意义',shots.map(s=>`镜头 #${s.index}：${s.movement}；${s.function}`).join('\n')),item('讨论：回到镜头证据','比较上述镜头的观看距离、空间安排与情绪功能，为结论提供画面证据。')],questions:[{...item('景别与观看距离','选择一个镜头，说明景别引导你关注了哪些细节。'),level:'理解'},{...item('摄影机与视点','用镜头证据分析摄影机运动与观看视点的关系。'),level:'分析'},{...item('剪辑与叙事','分析相邻镜头如何组织时间与空间。'),level:'分析'},{...item('形式选择的效果','评价一处形式选择，并用复核记录支持观点。'),level:'评价'},{...item('重新设计镜头','为同一情境设计不同景别或运镜，说明预期效果。'),level:'创造'}],board:item('板书设计','画面证据 → 形式要素 → 叙事功能 → 讨论与反证'),introduction:item('课堂导入','先观看片段，记录最吸引你的画面，再回到具体镜头讨论原因。')};}
 function lessonReady(c){return !c.reselect&&c.shots.length>0&&c.analysis_complete&&c.shots.every(s=>s.status==='teacher_reviewed');}
 async function generateLesson(c,goal,owner,template=false,update=()=>{}){
  update({progress:15,stage:"正在整理已复核镜头与课程依据"});
@@ -204,7 +203,7 @@ async function generateLesson(c,goal,owner,template=false,update=()=>{}){
  const compactShots=c.shots.map(({id,index,start,end,shot_size,angle,movement,composition,lighting,sound,av_relation,transition,function:analysis,knowledge_ids})=>({id,index,start,end,shot_size,angle,movement,composition,lighting,sound,av_relation,transition,function:analysis,knowledge_ids}));
  const sources=knowledge.filter(k=>evidence.includes(k.id)).map(({id,title,summary,source})=>({id,title,summary,source}));
  update({progress:35,stage:template?"正在整理教学模板":"模型正在生成课件、讨论题、板书与导入语"});
- const content=template?manualLesson(c):await generateValidatedLesson({call:(messages,options)=>models.call('text',messages,false,options),goal,shots:compactShots,evidence,sources,update});
+ const content=template?teacherLessonTemplate({shots:compactShots,evidence,sources}):await generateValidatedLesson({call:(messages,options)=>models.call('text',messages,false,options),goal,shots:compactShots,evidence,sources,update});
  const latest=get(c.id,owner);
  if(!lessonReady(latest)||JSON.stringify(latest.shots)!==JSON.stringify(c.shots))throw Error('生成期间镜头依据已变化，请重新生成，未保存旧依据材料');
  update({progress:95,stage:"正在保存备课材料"});
@@ -269,7 +268,7 @@ app.get('/api/export/csv/homework/:id',teacher,(req,res)=>{
  const rows=[['学号','姓名','评价意见','总分',...x.rubric.map(r=>r.name),'状态','文件名'],...x.items.map(it=>[it.student_id||'',it.student_name||'',it.comments.map(c=>c.comment).join('；')+'；'+it.suggestion,it.total,...it.dimensions.map(d=>d.score),'教师已复核',it.filename||'']),...(x.failures||[]).map(it=>[it.student_id||'',it.student_name||'',it.error,'',...Array(5).fill(''),'未成功批改',it.filename||''])];
  res.setHeader('Content-Disposition','attachment; filename="homework-grades.csv"');res.type('text/csv').send('\ufeff'+rows.map(row=>row.map(csvCell).join(',')).join('\r\n'));
 });
-function lessonText(x){const c=x.content;return `# ${x.clip_title} · 备课材料\n\n${c.mode==='teacher_template'?'教师复核记录整理模板':'AI 生成 · 教师已复核'}\n\n## 拉片表\n\n|镜号|时间码|景别|角度|运镜|构图|声音|时长|分析|\n|---|---|---|---|---|---|---|---|---|\n`+x.shots.map(s=>[s.index,`${s.start.toFixed(2)}–${s.end.toFixed(2)}`,s.shot_size,s.angle,s.movement,s.composition,s.sound.join('、')||'未听辨',s.duration.toFixed(2),s.function].map(v=>String(v).replace(/\|/g,'／').replace(/\n/g,' ')).join('|')).map(r=>'|'+r+'|').join('\n')+'\n\n'+[...c.slides,...c.questions,c.board,c.introduction].map(it=>`## ${it.title}${it.level?' · '+it.level:''}\n\n${it.content}\n\n依据：镜头 ${it.shot_ids.map(id=>'#'+x.shots.find(s=>s.id===id)?.index).join('、')}；知识点 ${it.knowledge_ids.map(sourceLabel).join('；')}\n`).join('\n');}
+function lessonText(x){const c=x.content;return `# ${x.clip_title} · 备课材料\n\n${c.mode==='teacher_template'?'教师复核记录整理模板':'AI 生成 · 教师已复核'}\n\n${c.generation_notice?c.generation_notice+'\n\n':''}## 拉片表\n\n|镜号|时间码|景别|角度|运镜|构图|声音|时长|分析|\n|---|---|---|---|---|---|---|---|---|\n`+x.shots.map(s=>[s.index,`${s.start.toFixed(2)}–${s.end.toFixed(2)}`,s.shot_size,s.angle,s.movement,s.composition,s.sound.join('、')||'未听辨',s.duration.toFixed(2),s.function].map(v=>String(v).replace(/\|/g,'／').replace(/\n/g,' ')).join('|')).map(r=>'|'+r+'|').join('\n')+'\n\n'+[...c.slides,...c.questions,c.board,c.introduction].map(it=>`## ${it.title}${it.level?' · '+it.level:''}\n\n${it.content}\n\n依据：镜头 ${it.shot_ids.map(id=>'#'+x.shots.find(s=>s.id===id)?.index).join('、')}；知识点 ${it.knowledge_ids.map(sourceLabel).join('；')}\n`).join('\n');}
 app.get('/api/export/:type/:id',teacher,async(req,res)=>{const x=get(req.params.id,req.user.username);if(!x.reviewed||x.stale)return res.status(409).json({error:'请先完成教师复核'});const text=x.content?lessonText(x):'# 作业反馈 · 教师已复核\n\n'+x.items.map(it=>`${it.student_id||it.id} ${it.student_name||''} · ${it.total}分\n${it.dimensions.map(d=>d.name+' '+d.score+'：'+d.reason).join('\n')}\n${it.comments.map(c=>'原文：'+c.quote+'\n批注：'+c.comment).join('\n')}\n建议：${it.suggestion}`).join('\n\n');
  if(req.params.type==='md'){res.setHeader('Content-Disposition','attachment; filename="lesson.md"');return res.type('text/markdown').send(text);}
  if(req.params.type!=='docx')return res.status(400).json({error:'不支持的导出格式'});
