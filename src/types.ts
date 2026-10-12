@@ -1,4 +1,4 @@
-export type Page = '首页'|'拉片工作台'|'备课生成'|'作业批改'|'课程知识库'|'智能体'|'成效看板'|'学生成绩'|'账户安全';
+export type Page = '首页'|'拉片工作台'|'备课生成'|'布置作业'|'作业批改'|'课程知识库'|'智能体'|'成效看板'|'学生成绩'|'账户安全';
 export type Course={id:string;name:string;label:string};
 export type User = {name:string;username?:string;role:'teacher'|'judge'|'admin';expires?:string;course?:Course};
 export type Shot = {id:string;index:number;start:number;end:number;duration:number;keyframes:string[];shot_size:string;angle:string;movement:string;composition:string;lighting:string;sound:string[];av_relation:string;transition:string;function:string;knowledge_ids:string[];confidence:number;status:string;error?:string;teaching_reason?:string};
@@ -14,4 +14,9 @@ export type Config = {provider:string;model:string;configured:boolean;verified:s
 export type LessonJob={progress?:number;id:string;clip_id:string;goal?:string;status:"queued"|"running"|"completed"|"failed";stage:string;created:number;error?:string;lesson?:Lesson};
 
 export type Assignment={student_id:string;student_name:string;filename:string;text:string};
+export type TaskRubric={name:string;weight:number;criteria:string};
+export type TaskForm={title:string;class_name:string;academic_year:string;semester:string;goal:string;instructions:string;submission_requirements:string;deadline:string|null;clip_id:string|null;roster:{student_id:string;student_name:string}[];rubric:TaskRubric[];knowledge_ids:string[]};
+export type TaskProgress={expected:number|null;submitted:number;reviewed:number;pending_review:number;late:number;missing:{student_id:string;student_name:string}[];submissions:{id:string;student_id:string;student_name:string;filename:string;revision:number;submitted:number;late:boolean;status:'submitted'|'draft'|'reviewed';batch_id:string|null;score:number|null}[]};
+export type AssignmentTask=TaskForm&{id:string;course_id:string;course:string;term:string;status:'draft'|'published'|'closed';created:number;published_at?:number;sources:Pick<Knowledge,'id'|'title'|'source'>[];progress:TaskProgress};
+export type TaskSubmission=Assignment&{id:string;task_id:string;revision:number;submitted:number};
 export type GradeJob={id:string;status:string;stage:string;created:number;completed?:number;total?:number;error?:string;grade?:Grade};
