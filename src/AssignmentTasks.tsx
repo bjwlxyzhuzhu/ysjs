@@ -3,6 +3,7 @@ import {ClipboardList,Plus,Save,Send,Download,Sparkles,Upload,ArrowRight,Trash2}
 import {api} from './api';
 import type {AssignmentTask,TaskForm,Clip,Config,User} from './types';
 import './assignment-tasks.css';
+import {ReviewDrawer} from './ReviewDrawer';
 
 const now=new Date(),startYear=now.getMonth()>=7?now.getFullYear():now.getFullYear()-1;
 export const academicYears=Array.from({length:11},(_,i)=>`${startYear-5+i}-${startYear-4+i}`);
@@ -20,7 +21,7 @@ const inputDeadline=(value:string|null)=>value?new Date(Date.parse(value)+8*3600
 const statusLabel={draft:'待发布草稿',published:'已发布 · 收交中',closed:'已结束收交'};
 
 export function AssignmentTasks({user,clips,config,notify,onGrade}:{user:User;clips:Clip[];config:Config|null;notify:(s:string)=>void;onGrade:(taskId:string,submissionIds:string[])=>void}){
-  const [tasks,setTasks]=useState<AssignmentTask[]>([]),[selected,setSelected]=useState<string|null>(null),[form,setForm]=useState<TaskForm>(()=>emptyForm(config)),[rosterText,setRosterText]=useState(''),[sources,setSources]=useState<AssignmentTask['sources']>([]),[dirty,setDirty]=useState(false),[reviewed,setReviewed]=useState(false),[busy,setBusy]=useState(false),[generating,setGenerating]=useState(false),[elapsed,setElapsed]=useState(0),[error,setError]=useState(''),[checked,setChecked]=useState<string[]>([]);
+  const [tasks,setTasks]=useState<AssignmentTask[]>([]),[selected,setSelected]=useState<string|null>(null),[form,setForm]=useState<TaskForm>(()=>emptyForm(config)),[rosterText,setRosterText]=useState(''),[sources,setSources]=useState<AssignmentTask['sources']>([]),[dirty,setDirty]=useState(false),[reviewed,setReviewed]=useState(false),[busy,setBusy]=useState(false),[generating,setGenerating]=useState(false),[elapsed,setElapsed]=useState(0),[error,setError]=useState(''),[checked,setChecked]=useState<string[]>([]),[detailTab,setDetailTab]=useState<string|null>(null);
   const current=tasks.find(t=>t.id===selected),locked=!!current&&current.status!=='draft',disabled=busy||generating,readonly=locked||disabled;
   async function reload(){const xs=await api<AssignmentTask[]>('/assignment-tasks');setTasks(xs);return xs;}
   useEffect(()=>{if(user.role==='teacher')void reload().catch(e=>setError(e.message));},[user.role]);
@@ -47,7 +48,7 @@ export function AssignmentTasks({user,clips,config,notify,onGrade}:{user:User;cl
         <div className="notice">发布代表教师已审核。通过任务书在现有班级渠道布置作业，由教师统一导入收回的Word/ZIP；平台不要求学生登录。</div>
       </aside>
       <div className="task-main">
-        <section className="glass task-editor">
+        <section className="glass task-compact-head" hidden={!locked||!current}>{current&&<><span className="review-eyebrow">{statusLabel[current.status]}</span><h2>{current.title}</h2><div className="task-compact-meta"><div><small>课程与班级</small><span>{current.course} · {current.class_name}</span></div><div><small>学年与学期</small><span>{current.term}</span></div><div><small>截止时间</small><span>{deadlineLabel(current.deadline)}</span></div></div><p className="review-preview">{current.goal||'按任务要求完成作品分析与应用练习。'}</p><div className="review-summary-actions"><button className="subtle" onClick={()=>setDetailTab('instructions')}>查看任务与评价标准</button><button className="subtle" onClick={()=>setDetailTab('sources')}>课程依据</button><button className="subtle" onClick={()=>window.location.assign('/api/assignment-tasks/'+current.id+'/export/docx')}><Download size={16}/>导出Word任务书</button><button className="primary" disabled={disabled||current.status==='closed'} onClick={()=>onGrade(current.id,[])}><Upload size={16}/>收交学生作业</button>{current.status==='published'?<button className="text-button" disabled={disabled} onClick={()=>void close()}>结束收交</button>:<button className="text-button" disabled={disabled} onClick={()=>void publish()}>重新开放收交</button>}</div></>}</section><section className="glass task-editor" hidden={locked}>
           <div className="task-editor-heading"><h2>{current?statusLabel[current.status]:'新建作业任务'}</h2>{current?.status==='draft'&&<button className="text-button" disabled={disabled} onClick={()=>void remove()}><Trash2 size={15}/>删除草稿</button>}</div>
           <div className="task-fields">
             <label>课程<input aria-label="作业课程" value={user.course?.name||'影视鉴赏'} readOnly/></label>
@@ -80,5 +81,11 @@ export function AssignmentTasks({user,clips,config,notify,onGrade}:{user:User;cl
         </section>}
       </div>
     </div>
+    {locked&&current&&<ReviewDrawer open={!!detailTab} onClose={()=>setDetailTab(null)} title={current.title} subtitle={current.class_name+' · '+current.term} initialTab={detailTab||'instructions'} tabs={[
+      {id:'instructions',label:'任务要求',content:<><h3>教学目标</h3><p>{current.goal||'未填写'}</p><h3>作业内容</h3><p>{current.instructions}</p><h3>提交要求</h3><p>{current.submission_requirements}</p></>},
+      {id:'rubric',label:'评价标准',content:<><h3>五项量规 · 合计100%</h3>{current.rubric.map(r=><article className="grade-dimension" key={r.name}><span>{r.name}<small>{r.weight}%</small></span><p>{r.criteria||'按课程要求评价。'}</p></article>)}</>},
+      {id:'sources',label:'课程依据',content:current.sources.length?current.sources.map(s=><article className="review-source-card" key={s.id}><b>{s.title}</b><small>{s.source.file} · {s.source.unit||'页'} {s.source.page}</small></article>):<p>本任务未指定课程资料引用，由教师审核作业适切性。</p>},
+      {id:'roster',label:'班级名单',content:<><h3>班级名单 · {current.roster.length}人</h3>{current.roster.length?<p>{current.roster.map(s=>s.student_id+' '+s.student_name).join('\n')}</p>:<p>未设置名单，不推测应交与未交。</p>}<p className="review-help">名单只在教师工作空间保存，不发送模型，不出现在学生任务书中。</p></>}
+    ]}/>}
   </div>;
 }

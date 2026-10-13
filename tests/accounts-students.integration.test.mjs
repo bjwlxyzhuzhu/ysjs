@@ -1,8 +1,10 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs/promises';import path from 'node:path';import {spawn} from 'node:child_process';import {DatabaseSync} from 'node:sqlite';import {unzipSync,strFromU8} from 'fflate';
-const root=path.resolve('.'),dir=path.join(root,'data','accounts-qa-'+Date.now()),url='http://127.0.0.1:8801';
+import {createServer} from 'node:net';
+async function availablePort(){const socket=createServer();await new Promise((resolve,reject)=>{socket.once('error',reject);socket.listen(0,'127.0.0.1',resolve);});const port=socket.address().port;await new Promise(resolve=>socket.close(resolve));return port;}
+const fixturePort=await availablePort(),root=path.resolve('.'),dir=path.join(root,'data','accounts-qa-'+Date.now()),url='http://127.0.0.1:'+fixturePort;
 test('管理员首次设置、教师账号权限、停用重置、成绩历史与能力报告', {timeout:60000},async t=>{
- await fs.mkdir(dir,{recursive:true});const server=spawn(process.execPath,['server/index.mjs'],{cwd:root,env:{...process.env,PORT:'8801',HOST:'127.0.0.1',LP_DATA_DIR:path.relative(root,dir),LP_LOCAL_DEMO:'false',MODEL_API_KEY:''},windowsHide:true});let stderr='';server.stderr.on('data',x=>stderr+=x);
- t.after(async()=>{server.kill();await new Promise(r=>server.once('exit',r));if(dir.startsWith(path.join(root,'data')+path.sep))await fs.rm(dir,{recursive:true,force:true});});
+ await fs.mkdir(dir,{recursive:true});const server=spawn(process.execPath,['server/index.mjs'],{cwd:root,env:{...process.env,PORT:String(fixturePort),HOST:'127.0.0.1',LP_DATA_DIR:path.relative(root,dir),LP_LOCAL_DEMO:'false',MODEL_API_KEY:''},windowsHide:true});let stderr='';server.stderr.on('data',x=>stderr+=x);
+ t.after(async()=>{if(server.exitCode===null){const exited=new Promise(r=>server.once('exit',r));server.kill();await exited;}if(dir.startsWith(path.join(root,'data')+path.sep))await fs.rm(dir,{recursive:true,force:true});});
  for(let i=0;i<100;i++){try{await fetch(url+'/api/auth/setup');break;}catch{await new Promise(r=>setTimeout(r,100));}}
  async function req(p,body,cookie='',method='POST'){const response=await fetch(url+'/api'+p,{method:body?method:'GET',headers:{Cookie:cookie,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});return {status:response.status,data:await response.json(),cookie:response.headers.get('set-cookie')?.split(';')[0]};}
  assert.equal((await req('/auth/setup')).data.required,true,stderr);assert.equal((await req('/auth/local',{})).status,403);
