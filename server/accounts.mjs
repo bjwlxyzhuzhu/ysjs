@@ -1,9 +1,9 @@
 import {randomBytes,scryptSync,timingSafeEqual} from 'node:crypto';
-import {initializeCourses,assignedCourse,requireCourse} from './courses.mjs';
+import {initializeCourses,assignedCourse,requireCourse,teacherCourses} from './courses.mjs';
 const bad=message=>Object.assign(Error(message),{status:400});
 export function passwordHash(password){if(typeof password!=='string'||password.length<8||password.length>128)throw bad('密码需为8至128个字符');const salt=randomBytes(16).toString('hex');return {salt,hash:scryptSync(password,salt,64).toString('hex')};}
 export function passwordMatches(password,user){if(typeof password!=='string'||password.length>128)return false;const actual=scryptSync(password,user?.salt||'dummy',64);return !!user&&timingSafeEqual(actual,Buffer.from(user.hash,'hex'));}
-export function publicUser(user,db){return {username:user.username,role:user.role,name:user.display_name||(user.role==='admin'?'系统管理员':user.role==='teacher'?'主讲教师':'评委体验'),expires:user.expires,...(db?{course:assignedCourse(db,user)}:{})};}
+export function publicUser(user,db){return {username:user.username,role:user.role,name:user.display_name||(user.role==='admin'?'系统管理员':user.role==='teacher'?'主讲教师':'评委体验'),expires:user.expires,...(db?{course:assignedCourse(db,user),courses:user.role==='teacher'?teacherCourses(db,user):[]}:{})};}
 export function initializeAccounts(db){
  const columns=db.prepare('PRAGMA table_info(users)').all().map(c=>c.name);
  if(!columns.includes('display_name'))db.exec("ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''");
@@ -34,7 +34,7 @@ export function registerAccounts(app,db){
  app.post('/api/admin/teachers',admin,(req,res)=>{
   const {username,name,password}=req.body;if(typeof username!=='string'||!/^[A-Za-z0-9_.-]{3,40}$/.test(username)||typeof name!=='string'||!name.trim()||name.length>60)throw bad('账号需为3至40位字母数字或_.-，姓名需为1至60字');
   if(db.prepare('SELECT username FROM users WHERE username=?').get(username))return res.status(409).json({error:'账号已存在'});
-  const course=requireCourse(db,req.body.course_id);const {salt,hash}=passwordHash(password);db.prepare('INSERT INTO users(username,role,salt,hash,expires,display_name,active,course_id) VALUES(?,?,?,?,?,?,1,?)').run(username,'teacher',salt,hash,null,name.trim(),course.id);res.status(201).json({username,display_name:name.trim(),active:1,course_id:course.id,course});
+  const course=req.body.course_id?requireCourse(db,req.body.course_id):null;const {salt,hash}=passwordHash(password);db.prepare('INSERT INTO users(username,role,salt,hash,expires,display_name,active,course_id) VALUES(?,?,?,?,?,?,1,?)').run(username,'teacher',salt,hash,null,name.trim(),course?.id||'');if(course)db.prepare('INSERT OR IGNORE INTO teacher_courses VALUES(?,?)').run(username,course.id);res.status(201).json({username,display_name:name.trim(),active:1,course_id:course?.id||'',course});
  });
  app.patch('/api/admin/teachers/:username',admin,(req,res)=>{
   const user=db.prepare("SELECT username FROM users WHERE username=? AND role='teacher'").get(req.params.username);if(!user)return res.status(404).json({error:'教师账号不存在'});
@@ -43,7 +43,7 @@ export function registerAccounts(app,db){
   const course=req.body.course_id===undefined?null:requireCourse(db,req.body.course_id);
   if(secret)db.prepare('UPDATE users SET salt=?,hash=? WHERE username=?').run(secret.salt,secret.hash,user.username);
   if(req.body.active!==undefined)db.prepare('UPDATE users SET active=? WHERE username=?').run(Number(req.body.active),user.username);
-  if(course)db.prepare('UPDATE users SET course_id=? WHERE username=?').run(course.id,user.username);
+  if(course){db.prepare('UPDATE users SET course_id=? WHERE username=?').run(course.id,user.username);db.prepare('INSERT OR IGNORE INTO teacher_courses VALUES(?,?)').run(user.username,course.id);}
   if(secret||req.body.active===false||course)db.prepare('DELETE FROM sessions WHERE username=?').run(user.username);
   res.json({ok:true});
  });

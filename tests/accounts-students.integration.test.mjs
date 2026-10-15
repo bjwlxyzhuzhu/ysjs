@@ -9,7 +9,7 @@ test('管理员首次设置、教师账号权限、停用重置、成绩历史�
  async function req(p,body,cookie='',method='POST'){const response=await fetch(url+'/api'+p,{method:body?method:'GET',headers:{Cookie:cookie,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});return {status:response.status,data:await response.json(),cookie:response.headers.get('set-cookie')?.split(';')[0]};}
  assert.equal((await req('/auth/setup')).data.required,true,stderr);assert.equal((await req('/auth/local',{})).status,403);
  assert.equal((await req('/auth/setup',{password:'short'})).status,400);const admin=await req('/auth/setup',{password:'fixture-admin-password'});assert.equal(admin.status,201);assert.equal(admin.data.role,'admin');assert.equal((await req('/auth/setup',{password:'another-fixture'})).status,409);
- for(const username of ['teach_a','teach_b'])assert.equal((await req('/admin/teachers',{username,name:'测试教师',password:'fixture-teacher-password'},admin.cookie)).status,201);
+ for(const username of ['teach_a','teach_b'])assert.equal((await req('/admin/teachers',{username,name:'测试教师',password:'fixture-teacher-password',course_id:'film-appreciation'},admin.cookie)).status,201);
  const a=await req('/auth/login',{username:'teach_a',password:'fixture-teacher-password'}),b=await req('/auth/login',{username:'teach_b',password:'fixture-teacher-password'});assert.equal(a.data.role,'teacher');assert.equal(a.data.name,'测试教师');
  assert.equal((await req('/admin/teachers',undefined,a.cookie)).status,403);assert.equal((await req('/students?teacher=teach_b',undefined,a.cookie)).status,403);
  const qaDb=new DatabaseSync(path.join(dir,'app.sqlite'));const rubric=(await req('/config',undefined,a.cookie)).data.rubric;

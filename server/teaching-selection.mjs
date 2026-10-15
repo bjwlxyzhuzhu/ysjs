@@ -1,3 +1,4 @@
+import {sameRange,uniqueShots} from './shot-recovery.mjs';
 export function candidateSegments(cuts,limit=20){
  if(limit<3||!Number.isInteger(limit))throw Error('候选数量上限至少为3');
  const boundaries=[...new Set(cuts.filter(Number.isFinite))].sort((a,b)=>a-b);
@@ -18,9 +19,9 @@ export function validateSelection(raw,candidates,max=10,min=3){
 }
 export function mergeTeachingSelection(protectedShots,selected,candidates){
  if(protectedShots.length>10)throw Error('教师已修改或复核的片段超过10个，已保留全部记录；请先整理这些片段再重新精选');
- const same=(a,b)=>Math.abs(a.start-b.start)<.01&&Math.abs(a.end-b.end)<.01;
- const preserved=protectedShots.map(s=>({start:s.start,end:s.end,time:(s.start+s.end)/2,teaching_reason:s.teaching_reason||'教师已复核或修改，优先保留'}));
- const result=[...preserved,...selected.filter(c=>!preserved.some(p=>same(p,c)))].slice(0,10);
+ const same=sameRange;
+ const preserved=uniqueShots(protectedShots).map(s=>({start:s.start,end:s.end,time:(s.start+s.end)/2,teaching_reason:s.teaching_reason||'教师已复核或修改，优先保留'}));
+ const result=uniqueShots([...preserved,...selected.filter(c=>!preserved.some(p=>same(p,c)))]).slice(0,10);
  const remaining=candidates.filter(c=>!result.some(s=>same(s,c)));
  while(result.length<3&&remaining.length){
   let best=0,dist=-1;for(let i=0;i<remaining.length;i++){const d=result.length?Math.min(...result.map(s=>Math.abs(s.time-remaining[i].time))):remaining[i].time;if(d>dist){dist=d;best=i;}}

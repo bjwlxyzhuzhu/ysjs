@@ -1,4 +1,5 @@
 import {Document,Packer,Paragraph,TextRun} from 'docx';
+import {assignedCourse} from './courses.mjs';
 export function courseMetadata(body={}){
  const out={};for(const [key,fallback] of [['course','影视鉴赏'],['term',''],['assignment_title','']]){const value=body[key]??fallback;if(typeof value!=='string'||value.length>120)throw Object.assign(Error('课程、学期和作业名称需为不超过120字的文本'),{status:400});out[key]=value.trim()||fallback;}return out;
 }
@@ -29,7 +30,7 @@ export function abilityReportText(report){
 const csvCell=x=>'"'+String(x??'').replace(/"/g,'""').replace(/^\s*[=+@-]/,"' $&")+'"';
 export function registerStudents(app,{db,list}){
  function owner(req){if(!['teacher','admin'].includes(req.user.role))throw Object.assign(Error('仅教师与管理员可查看成绩档案'),{status:403});if(req.user.role==='teacher'){if(req.query.teacher&&req.query.teacher!==req.user.username)throw Object.assign(Error('无权查看其他教师的学生成绩'),{status:403});return req.user.username;}const name=String(req.query.teacher||'');if(!db.prepare("SELECT username FROM users WHERE username=? AND role='teacher'").get(name))throw Object.assign(Error('请选择教师账号'),{status:400});return name;}
- const reports=req=>{const name=owner(req);return studentReports(list('grade',name),list('grade_revision',name));};
+ const reports=req=>{const name=owner(req),course=req.user.role==='teacher'?assignedCourse(db,req.user):null;return studentReports(list('grade',name).filter(g=>!course||(g.course_id?g.course_id===course.id:g.course===course.name)),list('grade_revision',name));};
  app.get('/api/students',(req,res)=>res.json(reports(req)));
  function find(req){const report=reports(req).students.find(r=>r.student_id===req.params.id&&r.course===String(req.query.course||'影视鉴赏')&&r.term===String(req.query.term||''));if(!report)throw Object.assign(Error('该课程内没有此学生的作业记录'),{status:404});return report;}
  app.get('/api/students/:id',(req,res)=>res.json(find(req)));

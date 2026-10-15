@@ -3,7 +3,7 @@ export function createLessonJobs({list,save,get,generate,jobType='lesson_job',re
  function start(owner,clip,goal){
   const running=list(jobType,owner).find(j=>j.clip_id===clip.id&&['queued','running'].includes(j.status));
   if(running)return running;
-  const job={id:randomUUID(),clip_id:clip.id,goal,status:'queued',stage:queuedStage,created:Date.now(),...(jobType==='lesson_job'?{progress:5}:{})};save(jobType,job,owner);
+  const job={id:randomUUID(),clip_id:clip.id,...(clip.course_id?{course_id:clip.course_id}:{}),goal,status:'queued',stage:queuedStage,created:Date.now(),...(jobType==='lesson_job'?{progress:5}:{})};save(jobType,job,owner);
   void (async()=>{try{
    job.status='running';job.stage=runningStage;if(jobType==='lesson_job')job.progress=15;save(jobType,job,owner);
    const update=patch=>{Object.assign(job,patch);save(jobType,job,owner);};
