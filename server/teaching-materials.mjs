@@ -1,3 +1,4 @@
+import {chapterKnowledge,uploadFilename} from './knowledge-index.mjs';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
@@ -39,22 +40,17 @@ export async function extractTeachingFile(buffer,filename,type){
  sections=sections.map(s=>({...s,text:limitText(anonymizeAssignment(type==='批改记录'?maskTable(s.text):s.text,identity))})).filter(s=>s.text);
  limitText(sections.map(s=>s.text).join('\n\n'));return sections;
 }
-export function chunksFor(document){
- const chunks=[];for(const section of document.sections){for(let offset=0,part=1;offset<section.text.length;offset+=1100,part++){
-  if(chunks.length>=1000)throw bad('资料知识片段超过1000条，请拆分文件');
-  const excerpt=section.text.slice(offset,offset+1200);chunks.push({id:`kb.${document.id}.${section.page}.${part}`,chapter:document.type,title:document.title+' · '+section.page+(part>1?'.'+part:''),summary:excerpt,excerpt,keywords:[],source:{file:document.filename,page:section.page,unit:section.unit,part,material_id:document.id},status:'教师已复核',references:0});
- }}return chunks;
-}
+export function chunksFor(document){return chapterKnowledge(document);}
 export function searchCatalogue(query,catalogue,max=6){
  const q=String(query).toLowerCase();const terms=[...new Set([...(q.match(/[a-z0-9_-]{2,}/g)||[]),...(q.match(/[\p{Script=Han}]{2,}/gu)||[]).flatMap(word=>[...word].slice(0,80).flatMap((_,i)=>i<word.length-1?[word.slice(i,i+2)]:[]))])].slice(0,100);
- if(!terms.length)return [];return catalogue.map(k=>({k,score:terms.reduce((n,t)=>n+(String(k.title+' '+k.summary+' '+(k.keywords||[]).join(' ')).toLowerCase().includes(t)?1:0),0)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,max).map(x=>x.k);
+ if(!terms.length)return [];return catalogue.map(k=>({k,score:terms.reduce((n,t)=>n+(String(k.title+' '+(k.full_text||k.summary)+' '+(k.keywords||[]).join(' ')).toLowerCase().includes(t)?1:0),0)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,max).map(({k})=>{if(!k.full_text)return k;const hits=terms.map(t=>k.full_text.toLowerCase().indexOf(t)).filter(i=>i>=0),start=hits.length?Math.max(0,Math.min(...hits)-350):0;return {...k,excerpt:k.full_text.slice(start,start+6000),excerpt_truncated:k.full_text.length>6000};});
 }
 export function createTeachingLibrary({db,data,baseKnowledge}){
  db.exec("CREATE TABLE IF NOT EXISTS teaching_materials(id TEXT PRIMARY KEY,owner TEXT NOT NULL,course_id TEXT NOT NULL,payload TEXT NOT NULL); CREATE INDEX IF NOT EXISTS materials_scope ON teaching_materials(owner,course_id); CREATE TABLE IF NOT EXISTS library_settings(owner TEXT,course_id TEXT,mode TEXT,PRIMARY KEY(owner,course_id))");
  const documents=(owner,courseId)=>db.prepare('SELECT payload FROM teaching_materials WHERE owner=? AND course_id=? ORDER BY rowid DESC').all(owner,courseId).map(r=>JSON.parse(r.payload));
  const mode=(owner,courseId)=>db.prepare('SELECT mode FROM library_settings WHERE owner=? AND course_id=?').get(owner,courseId)?.mode||(courseId===DEFAULT_COURSE?'builtin':'private');
  const catalogue=(owner,courseId=DEFAULT_COURSE)=>[...(courseId===DEFAULT_COURSE&&mode(owner,courseId)==='builtin'?baseKnowledge:[]),...documents(owner,courseId).filter(d=>d.status==='ready').flatMap(chunksFor)];
- const summary=d=>{const {sections,file,...out}=d;return {...out,chunks:d.status==='ready'?chunksFor(d).length:0,characters:sections.reduce((n,s)=>n+s.text.length,0)};};
+ const summary=d=>{const {sections,file,...out}=d;return {...out,filename:uploadFilename(d.filename),title:uploadFilename(d.title),chunks:d.status==='ready'?chunksFor(d).length:0,characters:sections.reduce((n,s)=>n+s.text.length,0)};};
  function own(id,owner,courseId){const row=db.prepare('SELECT payload FROM teaching_materials WHERE id=? AND owner=? AND course_id=?').get(id,owner,courseId);if(!row)throw Object.assign(Error('未找到当前课程的资料'),{status:404});return JSON.parse(row.payload);}
  const persist=d=>db.prepare('INSERT OR REPLACE INTO teaching_materials VALUES(?,?,?,?)').run(d.id,d.owner,d.course_id,JSON.stringify(d));
  function register(app,teacher){
@@ -64,10 +60,11 @@ export function createTeachingLibrary({db,data,baseKnowledge}){
   const uploader=multer({dest:data,limits:{fileSize:200*MB,files:1}});
   app.post('/api/materials',teacher,uploader.single('file'),async(req,res)=>{
    if(!req.file)throw bad('请选择教学资料');const {owner,courseId}=scope(req),type=req.body.type;
-   const filename=Buffer.from(req.file.originalname,'latin1').toString('utf8').replace(/.*[\\/]/,'');const warnings=[],added=[];
+   const filename=uploadFilename(req.file.originalname);const warnings=[],added=[];
    try{
     if(!materialTypes.includes(type))throw bad('请选择资料类别');
     const store=async(name,buffer,originalFile)=>{
+     name=uploadFilename(name);
      const media=mediaExtensions.test(name);if(media&&type!=='课堂实录')throw bad('音视频请归入课堂实录');
      const sections=media?[]:await extractTeachingFile(buffer,name,type);const id=randomUUID(),file=path.join(data,'library',id+path.extname(name).toLowerCase());await fs.mkdir(path.dirname(file),{recursive:true});
      const d={id,owner,course_id:courseId,type,title:path.basename(name,path.extname(name)).slice(0,150),filename:name.slice(0,200),created:Date.now(),status:sections.length?'pending_review':'needs_text',sections,file,extraction_notice:sections.length?'文本已提取，请校订并确认入库':media?'音视频已保存，需补充转写文本后入库':'未提取到文字，可能为扫描件或图片课件，请补充文字后入库'};

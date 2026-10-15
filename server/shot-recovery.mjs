@@ -1,3 +1,4 @@
+import {canonicalKnowledgeIds} from './knowledge-index.mjs';
 // Time overlap alone is not sufficient: adjacent shots and repeated scenes at
 // different times remain distinct. Only near-identical time intervals merge.
 export function sameRange(a,b){
@@ -22,7 +23,7 @@ export function restoreCheckpoint(clip){
 export function teacherEvidence(shots,catalogue){
  const sources=[...catalogue];
  const normalized=shots.map(s=>{
-  const ids=(s.knowledge_ids||[]).filter(id=>catalogue.some(k=>k.id===id));
+  const ids=canonicalKnowledgeIds(s.knowledge_ids||[],catalogue);
   if(!ids.length&&s.teaching_point?.trim()){
    const id='teacher.'+s.id;
    sources.push({id,title:'教师教学要点 · 镜头 '+s.index,summary:s.teaching_point,excerpt:s.teaching_point,source:{file:'教师镜头标注',page:s.index,unit:'条'},status:'教师已复核'});ids.push(id);

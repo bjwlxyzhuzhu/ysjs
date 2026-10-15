@@ -1,3 +1,4 @@
+import {canonicalKnowledgeIds} from './knowledge-index.mjs';
 import {randomUUID} from 'node:crypto';
 import {Document,Packer,Paragraph,TextRun,Table,TableRow,TableCell} from 'docx';
 import {assignedCourse,DEFAULT_COURSE} from './courses.mjs';
@@ -61,8 +62,8 @@ export function registerAssignmentTasks(app,{db,list,save,teacher,library,models
     task.reviewed_shots=[];
     if(task.clip_id){const clip=scoped('clip',req,task.clip_id);if(!clip.shots.length||!clip.shots.every(s=>s.status==='teacher_reviewed'))fail('关联片段需先完成教师复核');task.reviewed_shots=clip.shots.map(({id,index,function:analysis,shot_size,composition})=>({id,index,shot_size,composition,function:analysis}));}
     const catalogue=library.catalogue(req.user.username,task.course_id);
-    if(task.knowledge_ids.some(id=>!catalogue.some(k=>k.id===id)))fail('引用资料已变化，请重新选择当前课程的已入库资料');
-    task.sources=catalogue.filter(k=>task.knowledge_ids.includes(k.id)).map(({id,title,source})=>({id,title,source}));return task;
+    if(task.knowledge_ids.some(id=>!catalogue.some(k=>k.id===id||k.aliases?.includes(id))))fail('引用资料已变化，请重新选择当前课程的已入库资料');
+    task.knowledge_ids=canonicalKnowledgeIds(task.knowledge_ids,catalogue);task.sources=catalogue.filter(k=>task.knowledge_ids.includes(k.id)).map(({id,title,source})=>({id,title,source}));return task;
   }
   app.get('/api/assignment-tasks',teacher,(req,res)=>res.json(tasks(req).map(t=>({...t,progress:progress(t,req.user.username)}))));
   app.post('/api/assignment-tasks/suggest',teacher,async(req,res)=>{

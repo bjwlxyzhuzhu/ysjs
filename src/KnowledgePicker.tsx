@@ -1,0 +1,12 @@
+import {useEffect,useId,useRef,useState} from 'react';
+import {BookOpen,ChevronDown,Search} from 'lucide-react';
+import type {Knowledge} from './types';
+import './knowledge-picker.css';
+export function KnowledgePicker({items,value,onChange,disabled=false}:{items:Knowledge[];value:string;onChange:(id:string)=>void;disabled?:boolean}){
+ const [open,setOpen]=useState(false),[query,setQuery]=useState(''),id=useId(),root=useRef<HTMLDivElement>(null),search=useRef<HTMLInputElement>(null),trigger=useRef<HTMLButtonElement>(null);
+ const current=items.find(k=>k.id===value||k.aliases?.includes(value)),filtered=items.filter(k=>(k.title+' '+k.chapter+' '+k.source.file).toLowerCase().includes(query.trim().toLowerCase()));
+ useEffect(()=>{if(!open)return;search.current?.focus();const outside=(e:PointerEvent)=>{if(!root.current?.contains(e.target as Node))setOpen(false);};document.addEventListener('pointerdown',outside);return()=>document.removeEventListener('pointerdown',outside);},[open]);
+ useEffect(()=>{if(!open)return;const frame=requestAnimationFrame(()=>root.current?.querySelector('.knowledge-picker-panel')?.scrollIntoView({block:'nearest'}));return()=>cancelAnimationFrame(frame);},[open,filtered.length]);
+ function choose(id:string){onChange(id);setOpen(false);trigger.current?.focus();}
+ return <div className="knowledge-picker" ref={root} onKeyDown={e=>{if(e.key==='Escape'&&open){e.preventDefault();e.stopPropagation();setOpen(false);trigger.current?.focus();}}}><span className="picker-label"><BookOpen size={14}/>关联知识点</span><button type="button" ref={trigger} disabled={disabled} aria-label="关联知识点" aria-expanded={open} aria-controls={id} onClick={()=>setOpen(v=>!v)}><span>{current?.title||(value?'原知识点已变更，请重新选择':'选择章节知识点')}</span><ChevronDown size={16}/></button>{open&&<div className="knowledge-picker-panel"><div className="picker-search"><Search size={15}/><input ref={search} aria-label="检索关联知识点" placeholder="按章节、主题或文件检索" value={query} onChange={e=>setQuery(e.target.value)}/></div><div role="listbox" id={id} aria-label="课程章节知识点"><button type="button" role="option" aria-selected={!value} onClick={()=>choose('')}>不关联，使用教师补充教学要点</button>{filtered.map(k=><button type="button" role="option" aria-selected={k.id===current?.id} key={k.id} onClick={()=>choose(k.id)}><b>{k.title}</b><small>{k.chapter} · {k.source.file}</small></button>)}{!filtered.length&&<p>暂无匹配知识点。可先补充课程资料，或手工填写教学要点。</p>}</div><small>{filtered.length} 个章节知识点 · 原文出处保留</small></div>}</div>;
+}

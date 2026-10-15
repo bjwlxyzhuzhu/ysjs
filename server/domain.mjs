@@ -1,3 +1,4 @@
+import {canonicalKnowledgeIds} from './knowledge-index.mjs';
 import { readFileSync } from 'node:fs';
 export const fields = ['shot_size','angle','movement','composition','lighting','sound','av_relation','transition','function','knowledge_ids'];
 export const options = {shot_size:['大远景','远景','全景','中景','近景','特写','不适用（图文/录屏）','无法判断'], angle:['平拍','仰拍','俯拍','倾斜','无法判断'], movement:['固定','推','拉','摇','移','跟','升降','手持','无法判断'], av_relation:['同步','对位','无法判断'], transition:['切','叠化','淡入淡出','匹配剪辑','无法判断']};
@@ -8,7 +9,7 @@ export function validateAnnotation(raw,catalogue=knowledge){
  const out={}; for(const f of fields){if(options[f]) {if(!options[f].includes(raw[f])) throw Error('模型返回无效枚举：'+f);out[f]=raw[f];}
  else if(['sound','knowledge_ids'].includes(f)){if(!Array.isArray(raw[f])||raw[f].some(x=>typeof x!=='string'))throw Error('模型返回无效列表：'+f);out[f]=raw[f].slice(0,10);}
  else {if(typeof raw[f]!=='string'||raw[f].length>3000)throw Error('模型返回无效字段：'+f);out[f]=raw[f];}}
- out.knowledge_ids=out.knowledge_ids.filter(id=>catalogue.some(k=>k.id===id));
+ out.knowledge_ids=canonicalKnowledgeIds(out.knowledge_ids,catalogue);
  if(!Number.isFinite(raw.confidence)||raw.confidence<0||raw.confidence>1) throw Error('置信度无效');out.confidence=raw.confidence;return out;
 }
 export function redact(text){return String(text).replace(/(?:姓名|学生姓名|学号|学校|学院|班级)\s*[:：]\s*[^\n\r，,；;]+/g,'[身份信息已移除]').replace(/1[3-9]\d{9}/g,'[联系方式已移除]').replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g,'[邮箱已移除]');}

@@ -17,7 +17,7 @@ test('Excel批改记录读取共享字符串并脱敏身份列',async()=>{
  const result=await extractTeachingFile(xlsx,'批改.xlsx','批改记录');assert.doesNotMatch(result[0].text,/002026001|测试姓名/);assert.match(result[0].text,/85/);
 });
 test('自建知识引用只在本次课程目录内有效，并保留全文片段来源',()=>{
- const d={id:'doc-a',title:'课程大纲',type:'教学大纲',filename:'大纲.txt',sections:[{text:'课堂讨论与证据论证。'.repeat(200),page:1,unit:'段'}]};const catalogue=chunksFor(d);assert(catalogue.length>1);assert.equal(catalogue[0].source.material_id,d.id);assert(searchCatalogue('证据论证',catalogue).length>0);assert.equal(searchCatalogue('unrelated-string-999',catalogue).length,0);
+ const d={id:'doc-a',title:'课程大纲',type:'教学大纲',filename:'大纲.txt',sections:[{text:'课堂讨论与证据论证。'.repeat(200),page:1,unit:'段'}]};const catalogue=chunksFor(d);assert.equal(catalogue.length,1);assert.equal(catalogue[0].full_text,d.sections[0].text);assert.equal(catalogue[0].source.material_id,d.id);assert(searchCatalogue('证据论证',catalogue).length>0);assert.equal(searchCatalogue('unrelated-string-999',catalogue).length,0);
  const item={title:'讨论',content:'依据原文设计课堂问题',shot_ids:['s1'],knowledge_ids:[catalogue[0].id]},raw={slides:Array(3).fill(item),questions:Array(5).fill({...item,level:'分析'}),board:item,introduction:item},shots=[{id:'s1',knowledge_ids:[catalogue[0].id]}];assert.throws(()=>validateLesson(raw,shots),/缺少有效/);assert.equal(validateLesson(raw,shots,[catalogue[0].id],catalogue),raw);
 });
 test('资料库按教师和课程双重隔离，自行上传模式不会混用省级默认资料',()=>{

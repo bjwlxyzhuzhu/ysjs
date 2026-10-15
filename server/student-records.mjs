@@ -4,10 +4,18 @@ export function courseMetadata(body={}){
  const out={};for(const [key,fallback] of [['course','影视鉴赏'],['term',''],['assignment_title','']]){const value=body[key]??fallback;if(typeof value!=='string'||value.length>120)throw Object.assign(Error('课程、学期和作业名称需为不超过120字的文本'),{status:400});out[key]=value.trim()||fallback;}return out;
 }
 const mean=xs=>xs.length?Math.round(xs.reduce((a,b)=>a+b,0)/xs.length*10)/10:null;
+export function gradesInCourse(grades,course){return grades.filter(g=>g.course_id?g.course_id===course?.id:(g.course||'影视鉴赏')===course?.name).map(g=>({...g,course:course.name}));}
+export function gradeRows(grades){
+ const reports=studentReports(grades),superseded=new Set(reports.students.flatMap(s=>s.records.filter(r=>r.superseded).map(r=>r.id)));
+ return grades.flatMap(g=>(g.items||[]).map((it,index)=>{
+  const valid=Number.isFinite(it.total)&&Array.isArray(it.dimensions)&&it.dimensions.every(d=>Number.isFinite(d.score)),key=g.id+':'+index;
+  return {key,batch_id:g.id,title:g.assignment_title||'作业批次',created:g.created||null,course:g.course||'影视鉴赏',term:g.term||'',class_name:g.class_name||'',student_id:String(it.student_id??'').trim(),student_name:String(it.student_name??'').trim(),filename:it.filename||'',total:valid?it.total:null,reviewed:g.reviewed===true&&valid,superseded:superseded.has(key),teacher_comment:it.teacher_comment||'',suggestion:it.suggestion||'',dimensions:it.dimensions||[],comments:it.comments||[]};
+ }));
+}
 export function studentReports(grades,revisions=[]){
  const groups=new Map();let unidentified=0;
  for(const grade of grades){const meta=courseMetadata(grade);for(const [index,item] of grade.items.entries()){
-  const id=item.student_id?.trim();if(!id){unidentified++;continue;}
+  const id=String(item.student_id??'').trim();if(!id){unidentified++;continue;}
   const key=JSON.stringify([id,meta.course,meta.term]);if(!groups.has(key))groups.set(key,{student_id:id,student_name:'',course:meta.course,term:meta.term,names:[],records:[],revisions:[]});const group=groups.get(key);
   if(item.student_name&&!group.names.includes(item.student_name))group.names.push(item.student_name);
   const valid=Number.isFinite(item.total)&&item.dimensions?.every(d=>Number.isFinite(d.score));
@@ -20,7 +28,7 @@ export function studentReports(grades,revisions=[]){
   const official=group.records.filter(r=>r.reviewed&&r.total!==null&&!r.superseded);group.reviewed_count=official.length;group.assignment_count=new Set(group.records.map(r=>r.assignment_task_id||r.id)).size;group.course_score=mean(official.map(r=>r.total));
   group.abilities=[...new Set(official.flatMap(r=>r.dimensions.map(d=>d.name)))].map(name=>({name,score:mean(official.flatMap(r=>r.dimensions.filter(d=>d.name===name).map(d=>d.score))),count:official.filter(r=>r.dimensions.some(d=>d.name===name)).length}));
   group.trend=official.length>=2?Math.round((official.at(-1).total-official[0].total)*10)/10:null;
-  group.revisions=revisions.filter(rev=>rev.current?.items?.some(it=>it.student_id?.trim()===group.student_id)&&courseMetadata(rev.current).course===group.course&&courseMetadata(rev.current).term===group.term).sort((a,b)=>a.created-b.created).map(rev=>({id:rev.id,created:rev.created,batch_id:rev.batch_id,previous:rev.previous.items.filter((it,i)=>rev.current.items[i]?.student_id?.trim()===group.student_id).map(it=>({total:it.total,reviewed:rev.previous.reviewed,teacher_comment:it.teacher_comment||''})),current:rev.current.items.filter(it=>it.student_id?.trim()===group.student_id).map(it=>({total:it.total,reviewed:rev.current.reviewed,teacher_comment:it.teacher_comment||''}))}));
+  group.revisions=revisions.filter(rev=>rev.current?.items?.some(it=>String(it.student_id??'').trim()===group.student_id)&&courseMetadata(rev.current).course===group.course&&courseMetadata(rev.current).term===group.term).sort((a,b)=>a.created-b.created).map(rev=>({id:rev.id,created:rev.created,batch_id:rev.batch_id,previous:rev.previous.items.filter((it,i)=>String(rev.current.items[i]?.student_id??'').trim()===group.student_id).map(it=>({total:it.total,reviewed:rev.previous.reviewed,teacher_comment:it.teacher_comment||''})),current:rev.current.items.filter(it=>String(it.student_id??'').trim()===group.student_id).map(it=>({total:it.total,reviewed:rev.current.reviewed,teacher_comment:it.teacher_comment||''}))}));
  }
  return {students:[...groups.values()].sort((a,b)=>a.student_id.localeCompare(b.student_id)),unidentified};
 }
@@ -30,7 +38,16 @@ export function abilityReportText(report){
 const csvCell=x=>'"'+String(x??'').replace(/"/g,'""').replace(/^\s*[=+@-]/,"' $&")+'"';
 export function registerStudents(app,{db,list}){
  function owner(req){if(!['teacher','admin'].includes(req.user.role))throw Object.assign(Error('仅教师与管理员可查看成绩档案'),{status:403});if(req.user.role==='teacher'){if(req.query.teacher&&req.query.teacher!==req.user.username)throw Object.assign(Error('无权查看其他教师的学生成绩'),{status:403});return req.user.username;}const name=String(req.query.teacher||'');if(!db.prepare("SELECT username FROM users WHERE username=? AND role='teacher'").get(name))throw Object.assign(Error('请选择教师账号'),{status:400});return name;}
- const reports=req=>{const name=owner(req),course=req.user.role==='teacher'?assignedCourse(db,req.user):null;return studentReports(list('grade',name).filter(g=>!course||(g.course_id?g.course_id===course.id:g.course===course.name)),list('grade_revision',name));};
+ const scoped=req=>{const name=owner(req),course=req.user.role==='teacher'?assignedCourse(db,req.user):null;return {name,grades:course?gradesInCourse(list('grade',name),course):list('grade',name)};};
+ const reports=req=>{const {name,grades}=scoped(req);return studentReports(grades,list('grade_revision',name));};
+ app.get('/api/students/batches',(req,res)=>{const {grades}=scoped(req);res.json({rows:gradeRows(grades),batches:grades.map(g=>({id:g.id,title:g.assignment_title||'作业批次',course:g.course||'影视鉴赏',term:g.term||'',count:g.items?.length||0,reviewed:g.reviewed===true,created:g.created||null}))});});
+ app.post('/api/students/grades/export',(req,res)=>{
+  const {grades}=scoped(req),keys=req.body.keys;
+  if(!Array.isArray(keys)||!keys.length||keys.length>10000||keys.some(k=>typeof k!=='string'))return res.status(400).json({error:'请选择1至10000条成绩记录'});
+  const all=gradeRows(grades),chosen=new Set(keys),rows=all.filter(r=>chosen.has(r.key));if(rows.length!==chosen.size)return res.status(404).json({error:'部分成绩不属于当前教师或课程，请刷新后重新选择'});
+  const table=[['学号','姓名','课程','学期','班级','作业名称','分数','状态','身份核对','教师评价','批改建议','文件名'],...rows.map(r=>[r.student_id,r.student_name,r.course,r.term,r.class_name,r.title,r.total,r.superseded?'历史版本（不计入过程成绩）':r.reviewed?'教师已复核':'AI初稿待复核',r.student_id&&r.student_name?'已填写':'待补全',r.teacher_comment,r.comments.map(c=>c.comment).join('；')+'；'+r.suggestion,r.filename])];
+  res.setHeader('Content-Disposition','attachment; filename="selected-student-grades.csv"');res.type('text/csv').send('\ufeff'+table.map(row=>row.map(csvCell).join(',')).join('\r\n'));
+ });
  app.get('/api/students',(req,res)=>res.json(reports(req)));
  function find(req){const report=reports(req).students.find(r=>r.student_id===req.params.id&&r.course===String(req.query.course||'影视鉴赏')&&r.term===String(req.query.term||''));if(!report)throw Object.assign(Error('该课程内没有此学生的作业记录'),{status:404});return report;}
  app.get('/api/students/:id',(req,res)=>res.json(find(req)));
