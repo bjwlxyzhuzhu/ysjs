@@ -37,13 +37,13 @@ test('401 不重试，不暴露上游响应体，固定 HTTPS 地址',async()=>{
 test('文本可用而图像失败时保留人工路径',async()=>{
  let count=0;const s=setup(async()=>++count===1?{ok:true,json:async()=>({choices:[{message:{content:'{"ok":true}'}}]})}:{ok:false,status:400});
  s.save({model:'qwen3.8-max',key:'test-only-key'});const result=await s.test();assert.equal(result.text,true);assert.equal(result.vision,false);assert.ok(result.verified);
- await assert.rejects(s.call('vision',[]),/图像能力/);
+ assert.equal(result.can_analyze_images,true);assert.equal(result.vision_state,'unavailable');await assert.rejects(s.call('vision',[]),/HTTP 400/);
 });
 test('模型无效 JSON 拒绝保存生成结果',async()=>{
  const s=setup(async()=>({ok:true,json:async()=>({choices:[{message:{content:'无结构输出'}}]})}));s.save({model:'qwen3.8-max',key:'test-only-key'});await assert.rejects(s.call('text',[]),/格式无效/);
 });
 test('重复保存相同模型密钥保留图像验证；测试期间不临时关闭已验证能力',async()=>{
  let value={model:'qwen3.8-flash',key:'test-only-key',endpoint:MODEL_ENDPOINT,vision:true,verified:'previous'};
- const service=createModelService({read:()=>value,write:v=>value=v,env:{},fetchImpl:async()=>{assert.equal(service.status().vision,true);return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({ok:true,color:'red'})}}]})};}});
+ const service=createModelService({read:()=>value,write:v=>value=v,env:{},fetchImpl:async()=>{assert.equal(service.status().vision,true);return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({ok:true,left:'red',right:'blue'})}}]})};}});
  assert.equal(service.save({model:value.model,key:''}).vision,true);assert.equal((await service.test()).vision,true);
 });

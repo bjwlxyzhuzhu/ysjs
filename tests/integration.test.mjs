@@ -45,7 +45,7 @@ test('真实媒体管线、复核限制、导出、数据隔离与未配置模�
  const before=(await req('/clips/'+id)).data;const row=qaDb.prepare('SELECT payload FROM records WHERE id=?').get(id);const partial=JSON.parse(row.payload);partial.shots=partial.shots.slice(0,1);partial.error='服务重启导致任务中断，请重试';partial.status='review';qaDb.prepare('UPDATE records SET payload=? WHERE id=?').run(JSON.stringify(partial),id);qaDb.close();
  assert.equal((await req('/clips/'+id+'/retry',{})).status,200);
  let resumed;for(let i=0;i<100;i++){resumed=(await req('/clips/'+id)).data;if(resumed.status==='review'&&resumed.shots.length===3&&!resumed.error)break;await new Promise(r=>setTimeout(r,100));}
- assert.equal(resumed.shots.length,3);assert.match(resumed.error,/图像能力/);assert.equal(resumed.shots[0].id,before.shots[0].id);assert.equal(resumed.shots[0].status,'teacher_reviewed');assert.equal(resumed.shots[0].function,'教师更新的分析');
+ assert.equal(resumed.shots.length,3);assert.match(resumed.error,/尚未配置可用的图像通道/);assert.equal(resumed.shots[0].id,before.shots[0].id);assert.equal(resumed.shots[0].status,'teacher_reviewed');assert.equal(resumed.shots[0].function,'教师更新的分析');
  // 新教师工具只使用隔离测试数据，绝不删除用户真实短片。
  const {zipSync,strToU8}=await import('fflate');const hf=new FormData();hf.set('file',new Blob([zipSync({'20260001_张三.txt':strToU8('近景突出人物的情绪。')})]),'batch.zip');
  const imported=await req('/homework/import',hf);assert.equal(imported.status,200);assert.equal(imported.data.items[0].student_name,'张三');assert.equal((await judgeReq('/homework/import',hf)).status,403);
